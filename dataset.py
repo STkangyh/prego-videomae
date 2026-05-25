@@ -47,11 +47,16 @@ class PACEDataset(Dataset):
             error_type = row["Error Type"]
 
             # sample dataset currently contains errors
-            label = 1
+            label_map = {
+                "WRONG TARGET": 0,
+                "WRONG OBJECT": 1,
+                "OMISSION OF STEPS": 2,
+                "SEQUENCE ERROR": 3
+            }
 
             self.samples.append({
                 "video_path": video_path,
-                "label": label,
+                "label": label_map[error_type],
                 "error_type": error_type
             })
 
