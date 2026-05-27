@@ -1,0 +1,19 @@
+{
+  "cut": 0,
+  "drop": 1,
+  "grate": 2,
+  "insert": 3,
+  "mix": 4,
+  "peel": 5,
+  "pour": 6,
+  "put": 7,
+  "put-in": 8,
+  "put-into": 9,
+  "put-on": 10,
+  "remove": 11,
+  "slice": 12,
+  "stir": 13,
+  "take": 14,
+  "throw-into": 15,
+  "wash": 16
+}

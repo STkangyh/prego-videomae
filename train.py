@@ -1,50 +1,124 @@
 import torch
-from torch.utils.data import DataLoader
 import torch.nn as nn
-import torch.optim as optim
+from torch.utils.data import DataLoader, random_split
 
-from dataset import PACEDataset
-from models import CNNLSTM
+from dataset import NextStepDataset
+from model import NextStepLSTM
+from utils import collate_fn
+
+import json
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+BATCH_SIZE = 64
+EPOCHS = 20
+LR = 1e-3
 
-dataset = PACEDataset(
-    csv_path="data/METADATA_PACE_4_SAMPLES_ready.csv",
-    video_dir="data/Archivo",
-    num_frames=16
-)
 
-loader = DataLoader(
-    dataset,
-    batch_size=2,
-    shuffle=True
-)
+def evaluate(model, loader, criterion):
+    model.eval()
 
-model = CNNLSTM(num_classes=4).to(device)
-
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=1e-4)
-
-epochs = 5
-
-for epoch in range(epochs):
-    model.train()
     total_loss = 0
+    correct = 0
+    total = 0
 
-    for batch in loader:
-        frames = batch["frames"].to(device)
-        labels = batch["label"].to(device)
+    with torch.no_grad():
+        for contexts, lengths, targets in loader:
+            contexts = contexts.to(DEVICE)
+            targets = targets.to(DEVICE)
 
-        optimizer.zero_grad()
+            logits = model(contexts)
 
-        logits = model(frames)
+            loss = criterion(logits, targets)
 
-        loss = criterion(logits, labels)
+            total_loss += loss.item()
 
-        loss.backward()
-        optimizer.step()
+            preds = logits.argmax(dim=1)
 
-        total_loss += loss.item()
+            correct += (preds == targets).sum().item()
+            total += targets.size(0)
 
-    print(f"Epoch {epoch+1}: {total_loss:.4f}")
+    acc = correct / total
+
+    return total_loss / len(loader), acc
+
+
+def main():
+    dataset = NextStepDataset(
+        "next_step_dataset.json",
+        "action2idx.json"
+    )
+
+    train_size = int(0.8 * len(dataset))
+    val_size = len(dataset) - train_size
+
+    train_set, val_set = random_split(
+        dataset,
+        [train_size, val_size]
+    )
+
+    train_loader = DataLoader(
+        train_set,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        collate_fn=collate_fn
+    )
+
+    val_loader = DataLoader(
+        val_set,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+
+    with open("action2idx.json") as f:
+        vocab = json.load(f)
+
+    model = NextStepLSTM(
+        vocab_size=len(vocab)
+    ).to(DEVICE)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=LR
+    )
+
+    for epoch in range(EPOCHS):
+        model.train()
+
+        total_loss = 0
+
+        for contexts, lengths, targets in train_loader:
+            contexts = contexts.to(DEVICE)
+            targets = targets.to(DEVICE)
+
+            optimizer.zero_grad()
+
+            logits = model(contexts)
+
+            loss = criterion(logits, targets)
+
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+        train_loss = total_loss / len(train_loader)
+
+        val_loss, val_acc = evaluate(
+            model,
+            val_loader,
+            criterion
+        )
+
+        print(
+            f"Epoch {epoch+1}/{EPOCHS} | "
+            f"Train Loss: {train_loss:.4f} | "
+            f"Val Loss: {val_loss:.4f} | "
+            f"Val Acc: {val_acc:.4f}"
+        )
+
+
+if __name__ == "__main__":
+    main()
